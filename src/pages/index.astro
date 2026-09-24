@@ -5,10 +5,17 @@ import PageHero from '../components/PageHero.astro';
 import EmptyState from '../components/EmptyState.astro';
 import { getDatabase } from '../lib/db';
 import { getAllGames } from '../lib/games';
+import { getAllPublishers } from '../lib/publishers';
 
 export const prerender = true;
 
 const games = await getAllGames(getDatabase());
+const publishers = await getAllPublishers(getDatabase());
+const categories = [...new Map(
+  games
+    .filter((game) => game.category !== null)
+    .map((game) => [game.category!.id, game.category!]),
+).values()].sort((a, b) => a.name.localeCompare(b.name));
 ---
 
 <Layout title="Tailspin Toys - Crowdfunding your new favorite game!">
@@ -21,13 +28,101 @@ const games = await getAllGames(getDatabase());
     <div>
       <h2 class="text-2xl font-medium mb-6 text-slate-100">Featured Games</h2>
 
+      <form method="get" class="mb-8 rounded-xl border border-slate-700 bg-slate-800/60 p-6" data-testid="game-filters">
+        <fieldset>
+          <legend class="mb-4 text-lg font-medium text-slate-100">Filter games</legend>
+          <div class="grid gap-4 md:grid-cols-2">
+            <label class="flex flex-col gap-2 text-sm text-slate-200">
+              <span>Categories</span>
+              <select
+                name="category"
+                multiple
+                size={Math.min(Math.max(categories.length, 2), 6)}
+                class="rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                data-testid="category-filter"
+              >
+                {categories.map((category) => (
+                  <option value={category.id}>{category.name}</option>
+                ))}
+              </select>
+            </label>
+            <label class="flex flex-col gap-2 text-sm text-slate-200">
+              <span>Publisher</span>
+              <select
+                name="publisher"
+                class="rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                data-testid="publisher-filter"
+              >
+                <option value="">All publishers</option>
+                {publishers.map((publisher) => (
+                  <option value={publisher.id}>{publisher.name}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div class="mt-4 flex flex-wrap gap-3">
+            <button
+              type="submit"
+              class="rounded-lg bg-blue-600 px-4 py-2 font-medium text-white transition-colors hover:bg-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              data-testid="apply-filters"
+            >
+              Apply filters
+            </button>
+            <a
+              href="/"
+              class="rounded-lg border border-slate-600 px-4 py-2 font-medium text-slate-200 transition-colors hover:bg-slate-700 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              data-testid="clear-filters"
+            >
+              Clear filters
+            </a>
+          </div>
+        </fieldset>
+      </form>
+
       {games.length === 0 ? (
         <EmptyState text="No games available at the moment." />
       ) : (
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6" data-testid="games-grid">
+        <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3" data-testid="games-grid">
           {games.map((game) => <GameCard game={game} />)}
         </div>
       )}
+      <div class="hidden" data-testid="filtered-empty-state" role="status" aria-live="polite">
+        <EmptyState text="No games match the selected filters." />
+      </div>
     </div>
   </div>
 </Layout>
+
+<script>
+  const form = document.querySelector<HTMLFormElement>('[data-testid="game-filters"]');
+  const grid = document.querySelector<HTMLElement>('[data-testid="games-grid"]');
+  const emptyState = document.querySelector<HTMLElement>('[data-testid="filtered-empty-state"]');
+  const categoryFilter = form?.querySelector<HTMLSelectElement>('[data-testid="category-filter"]');
+  const publisherFilter = form?.querySelector<HTMLSelectElement>('[data-testid="publisher-filter"]');
+
+  if (form && grid && emptyState && categoryFilter && publisherFilter) {
+    const params = new URLSearchParams(window.location.search);
+    const selectedCategories = params.getAll('category');
+    const selectedPublisher = params.get('publisher') ?? '';
+
+    for (const option of categoryFilter.options) {
+      option.selected = selectedCategories.includes(option.value);
+    }
+    publisherFilter.value = selectedPublisher;
+
+    const cards = [...grid.querySelectorAll<HTMLElement>('[data-testid="game-card"]')];
+    const visibleCards = cards.filter((card) => {
+      const categoryMatches = selectedCategories.length === 0
+        || selectedCategories.includes(card.dataset.categoryId ?? '');
+      const publisherMatches = selectedPublisher === ''
+        || card.dataset.publisherId === selectedPublisher;
+      return categoryMatches && publisherMatches;
+    });
+
+    for (const card of cards) {
+      card.hidden = !visibleCards.includes(card);
+    }
+    emptyState.classList.toggle('hidden', visibleCards.length > 0);
+    grid.classList.toggle('hidden', visibleCards.length === 0);
+  }
+</script>
