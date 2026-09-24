@@ -24,6 +24,42 @@ test.describe('Game Listing and Navigation', () => {
     });
   });
 
+  test('should filter games by category and publisher using query parameters', async ({ page }) => {
+    await page.goto('/');
+    const categoryFilter = page.getByTestId('category-filter');
+    const publisherFilter = page.getByTestId('publisher-filter');
+    await expect(categoryFilter).toBeVisible();
+    await expect(publisherFilter).toBeVisible();
+    const initialCardCount = await page.getByTestId('game-card').count();
+
+    const categoryValue = await categoryFilter.locator('option').nth(0).getAttribute('value');
+    const publisherValue = await publisherFilter.locator('option').nth(1).getAttribute('value');
+    expect(categoryValue).toBeTruthy();
+    expect(publisherValue).toBeTruthy();
+
+    await categoryFilter.selectOption(categoryValue!);
+    await publisherFilter.selectOption(publisherValue!);
+    await page.getByTestId('apply-filters').click();
+
+    await expect(page).toHaveURL(new RegExp(`[?&]category=${categoryValue}(&|$)`));
+    await expect(page).toHaveURL(new RegExp(`[?&]publisher=${publisherValue}(&|$)`));
+    await expect(page.getByTestId('games-grid')).toBeVisible();
+    const filteredCardCount = await page.getByTestId('game-card').filter({ visible: true }).count();
+    expect(filteredCardCount).toBeGreaterThan(0);
+    expect(filteredCardCount).toBeLessThan(initialCardCount);
+
+    await page.getByTestId('clear-filters').click();
+    await expect(page).toHaveURL('/');
+    await expect(page.getByTestId('games-grid')).toBeVisible();
+  });
+
+  test('should show an empty state when filters match no games', async ({ page }) => {
+    await page.goto('/?category=99999');
+    await expect(page.getByTestId('filtered-empty-state')).toBeVisible();
+    await expect(page.getByTestId('games-grid')).toBeHidden();
+    await expect(page.getByTestId('empty-state-text')).toContainText('No games match the selected filters.');
+  });
+
   test('should navigate to correct game details page when clicking on a game', async ({ page }) => {
     let gameId: string | null;
     let gameTitle: string | null;
